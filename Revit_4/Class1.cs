@@ -91,12 +91,16 @@ namespace Revit_4
                 windows.Add(window);
             }
 
-            FootPrintRoof roof = AddRoof(doc, Level2, walls);
+
+            //FootPrintRoof roof = AddFootRoof(doc, Level2, walls);
+            ExtrusionRoof roof = AddExtrusionRoof(doc, Level2, walls);
+
             if (roof == null)
             {
                 message = "Ошибка создания крыши";
                 return Result.Failed;
             }
+
 
             //Найдём 3д виды
 
@@ -105,6 +109,7 @@ namespace Revit_4
                     .Cast<View3D>()
                     .Where(x => x.IsTemplate == false)
                     .FirstOrDefault();
+
             // И если они есть, то переключимся в 3д
 
             if (view3d != null)
@@ -128,7 +133,47 @@ namespace Revit_4
             return Result.Succeeded;
         }
 
-        private FootPrintRoof AddRoof(Document doc, Level level, List<Wall> walls)
+
+        private ExtrusionRoof AddExtrusionRoof(Document doc, Level level, List<Wall> walls)
+        {
+            try
+            {
+                Transaction trans = new Transaction(doc, "Создаём крышу");
+                trans.Start();
+
+                var roofType = new FilteredElementCollector(doc)
+                .OfClass(typeof(RoofType))
+                .OfType<RoofType>()
+                .Where(x => x.Name.Equals("Типовой - 400мм"))
+                .Where(x => x.FamilyName.Equals("Базовая крыша"))
+                .FirstOrDefault();
+                Application application = doc.Application;
+
+                LocationCurve curve1 = walls[0].Location as LocationCurve;
+                XYZ p0 = curve1.Curve.GetEndPoint(0);
+                LocationCurve curve3 = walls[3].Location as LocationCurve;
+                XYZ p3 = curve3.Curve.GetEndPoint(0);
+
+                CurveArray curveArray = new CurveArray();
+                curveArray.Append(Line.CreateBound(new XYZ(0, p0.Y - walls[0].Width, UnitUtils.ConvertToInternalUnits(4400, UnitTypeId.Millimeters)), new XYZ(0, 0, UnitUtils.ConvertToInternalUnits(6000, UnitTypeId.Millimeters))));
+                curveArray.Append(Line.CreateBound(new XYZ(0, 0, UnitUtils.ConvertToInternalUnits(6000, UnitTypeId.Millimeters)), new XYZ(0, p3.Y + walls[0].Width, UnitUtils.ConvertToInternalUnits(4400, UnitTypeId.Millimeters))));
+
+                ReferencePlane plane = doc.Create.NewReferencePlane(new XYZ(0, 0, 0), new XYZ(0, 0, 1), new XYZ(0, 1, 0), doc.ActiveView);
+                ExtrusionRoof extrusionRoof = doc.Create.NewExtrusionRoof(curveArray, plane, level, roofType, UnitUtils.ConvertToInternalUnits(-5300, UnitTypeId.Millimeters), UnitUtils.ConvertToInternalUnits(5300, UnitTypeId.Millimeters));
+
+                trans.Commit();
+                return extrusionRoof;
+
+            }
+
+            catch (Exception ex)
+            {
+                return null;
+            }
+
+        }
+
+        private FootPrintRoof AddFootRoof(Document doc, Level level, List<Wall> walls)
         {
             try
             {
