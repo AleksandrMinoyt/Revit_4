@@ -60,15 +60,110 @@ namespace Revit_4
             List<Wall> walls = new List<Wall>();
             walls = CreateWalls(doc, 10000, 5000, Level1, Level2);
 
-            if (walls==null)
+            if (walls == null)
             {
                 message = "Ошибка создания стен";
                 return Result.Failed;
             }
 
+
+            FamilyInstance door = AddDoor(doc, Level1, walls[0]);
+
+
+            if (door == null)
+            {
+                message = "Ошибка создания двери";
+                return Result.Failed;
+            }
+
+
+            List<FamilyInstance> windows = new List<FamilyInstance>();
+
+            for (int i = 1; i < 4; i++)
+            {
+                FamilyInstance window = AddWindow(doc, Level1, walls[i]);
+                if (window == null)
+                {
+                    message = "Ошибка создания окна";
+                    return Result.Failed;
+                }
+                windows.Add(window);
+            }    
+
             return Result.Succeeded;
         }
 
+        private FamilyInstance AddWindow(Document doc, Level level, Wall wall)
+        {
+            try
+            {
+                Transaction trans = new Transaction(doc, "Создаём окно");
+
+                trans.Start();
+                var windowType = new FilteredElementCollector(doc)
+                              .OfClass(typeof(FamilySymbol))
+                              .OfCategory(BuiltInCategory.OST_Windows)
+                              .OfType<FamilySymbol>()
+                              .Where(x => x.Name.Equals("0915 x 1830 мм"))
+                              .Where(x => x.FamilyName.Equals("Фиксированные"))
+                              .FirstOrDefault();
+                var lc = wall.Location as LocationCurve;
+
+                XYZ point1 = lc.Curve.GetEndPoint(0);
+                XYZ point2 = lc.Curve.GetEndPoint(1);
+
+                XYZ point = (point1 + point2) / 2;
+
+                point = point.Add(new XYZ(0, 0, UnitUtils.ConvertToInternalUnits(600, UnitTypeId.Millimeters)));
+
+                if (!windowType.IsActive)
+                    windowType.Activate();
+
+                FamilyInstance window = doc.Create.NewFamilyInstance(point, windowType, wall, level, Autodesk.Revit.DB.Structure.StructuralType.NonStructural);
+                trans.Commit();
+
+                return window;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        private FamilyInstance AddDoor(Document doc, Level level, Wall wall)
+        {
+            try
+            {
+                Transaction trans = new Transaction(doc, "Создаём дверь");
+
+                trans.Start();
+                var doorType = new FilteredElementCollector(doc)
+                              .OfClass(typeof(FamilySymbol))
+                              .OfCategory(BuiltInCategory.OST_Doors)
+                              .OfType<FamilySymbol>()
+                              .Where(x => x.Name.Equals("0915 x 2134 мм"))
+                              .Where(x => x.FamilyName.Equals("Одиночные-Щитовые"))
+                              .FirstOrDefault();
+                var lc = wall.Location as LocationCurve;
+
+                XYZ point1 = lc.Curve.GetEndPoint(0);
+                XYZ point2 = lc.Curve.GetEndPoint(1);
+
+                XYZ point = (point1 + point2) / 2;
+
+                if (!doorType.IsActive)
+                    doorType.Activate();
+
+                FamilyInstance door = doc.Create.NewFamilyInstance(point, doorType, wall, level, Autodesk.Revit.DB.Structure.StructuralType.NonStructural);
+                trans.Commit();
+
+                return door;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
         private List<Wall> CreateWalls(Document doc, double width, double depth, Level levelDown, Level lewelUp)
         {
             try
