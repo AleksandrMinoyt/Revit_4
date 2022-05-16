@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.Attributes;
+using Autodesk.Revit.ApplicationServices;
 namespace Revit_4
 {
     [TransactionAttribute(TransactionMode.Manual)]
@@ -88,9 +89,98 @@ namespace Revit_4
                     return Result.Failed;
                 }
                 windows.Add(window);
-            }    
+            }
+
+            FootPrintRoof roof = AddRoof(doc, Level2, walls);
+            if (roof == null)
+            {
+                message = "Ошибка создания крыши";
+                return Result.Failed;
+            }
+
+            //Найдём 3д виды
+
+            var view3d = new FilteredElementCollector(doc)
+                    .OfClass(typeof(View3D))
+                    .Cast<View3D>()
+                    .Where(x => x.IsTemplate == false)
+                    .FirstOrDefault();
+            // И если они есть, то переключимся в 3д
+
+            if (view3d != null)
+            {
+                try
+                {
+                    commandData.Application.ActiveUIDocument.ActiveView = view3d;
+                    Transaction trans = new Transaction(doc, "Переключаем в 3D вид");
+                    trans.Start();
+                    view3d.DetailLevel = ViewDetailLevel.Fine;  // детагизацию побольше
+                    view3d.DisplayStyle = DisplayStyle.Realistic;  // реализма тоже
+                    trans.Commit();
+                }
+                catch
+                {
+                    //ну не вышло, так не вышло...
+                }
+
+            }
 
             return Result.Succeeded;
+        }
+
+        private FootPrintRoof AddRoof(Document doc, Level level, List<Wall> walls)
+        {
+            try
+            {
+                Transaction trans = new Transaction(doc, "Создаём крышу");
+                trans.Start();
+
+                var roofType = new FilteredElementCollector(doc)
+                .OfClass(typeof(RoofType))
+                .OfType<RoofType>()
+                .Where(x => x.Name.Equals("Типовой - 400мм"))
+                .Where(x => x.FamilyName.Equals("Базовая крыша"))
+                .FirstOrDefault();
+                Application application = doc.Application;
+                CurveArray footPrint = application.Create.NewCurveArray();
+
+                double wallDt = walls[0].Width / 2;
+                List<XYZ> points = new List<XYZ>();
+                points.Add(new XYZ(-wallDt, -wallDt, 0));
+                points.Add(new XYZ(wallDt, -wallDt, 0));
+                points.Add(new XYZ(wallDt, wallDt, 0));
+                points.Add(new XYZ(-wallDt, wallDt, 0));
+                points.Add(new XYZ(-wallDt, -wallDt, 0));
+
+                for (int i = 0; i < walls.Count; i++)
+                {
+                    LocationCurve curve = walls[i].Location as LocationCurve;
+                    XYZ p1 = curve.Curve.GetEndPoint(0);
+                    XYZ p2 = curve.Curve.GetEndPoint(1);
+                    Line line = Line.CreateBound(p1 + points[i], p2 + points[i + 1]);
+                    footPrint.Append(line);
+                }
+
+                ModelCurveArray footPrintModelCurveMapping = new ModelCurveArray();
+                FootPrintRoof footPrintRoof = doc.Create.NewFootPrintRoof(footPrint, level, roofType, out footPrintModelCurveMapping);
+
+                foreach (ModelCurve item in footPrintModelCurveMapping)
+                {
+                    footPrintRoof.set_DefinesSlope(item, true);
+                    footPrintRoof.set_SlopeAngle(item, 0.6);
+                }
+
+                trans.Commit();
+
+                return footPrintRoof;
+
+            }
+
+            catch (Exception ex)
+            {
+                return null;
+            }
+
         }
 
         private FamilyInstance AddWindow(Document doc, Level level, Wall wall)
@@ -129,7 +219,6 @@ namespace Revit_4
                 return null;
             }
         }
-
         private FamilyInstance AddDoor(Document doc, Level level, Wall wall)
         {
             try
