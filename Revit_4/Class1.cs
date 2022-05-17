@@ -59,7 +59,8 @@ namespace Revit_4
                 .FirstOrDefault();
 
             List<Wall> walls = new List<Wall>();
-            walls = CreateWalls(doc, 10000, 5000, Level1, Level2);
+            // размер дома можно задать произвольный
+            walls = CreateWalls(doc, 10000, 10000, Level1, Level2);
 
             if (walls == null)
             {
@@ -92,8 +93,8 @@ namespace Revit_4
             }
 
 
-            //FootPrintRoof roof = AddFootRoof(doc, Level2, walls);
-            ExtrusionRoof roof = AddExtrusionRoof(doc, Level2, walls);
+            FootPrintRoof roof = AddFootRoof(doc, Level2, walls);
+            // ExtrusionRoof roof = AddExtrusionRoof(doc, Level2, walls);
 
             if (roof == null)
             {
@@ -151,15 +152,20 @@ namespace Revit_4
 
                 LocationCurve curve1 = walls[0].Location as LocationCurve;
                 XYZ p0 = curve1.Curve.GetEndPoint(0);
+                XYZ p01 = curve1.Curve.GetEndPoint(1);
                 LocationCurve curve3 = walls[3].Location as LocationCurve;
                 XYZ p3 = curve3.Curve.GetEndPoint(0);
 
+                double lenWall = (p01.X - p0.X) / 2;
+
                 CurveArray curveArray = new CurveArray();
+                // высоту стен для профиля задаём жестко 4000 + поднимаем на 400(толщина крыши), высота конька 6000, остальное считаем по стенам
                 curveArray.Append(Line.CreateBound(new XYZ(0, p0.Y - walls[0].Width, UnitUtils.ConvertToInternalUnits(4400, UnitTypeId.Millimeters)), new XYZ(0, 0, UnitUtils.ConvertToInternalUnits(6000, UnitTypeId.Millimeters))));
                 curveArray.Append(Line.CreateBound(new XYZ(0, 0, UnitUtils.ConvertToInternalUnits(6000, UnitTypeId.Millimeters)), new XYZ(0, p3.Y + walls[0].Width, UnitUtils.ConvertToInternalUnits(4400, UnitTypeId.Millimeters))));
 
                 ReferencePlane plane = doc.Create.NewReferencePlane(new XYZ(0, 0, 0), new XYZ(0, 0, 1), new XYZ(0, 1, 0), doc.ActiveView);
-                ExtrusionRoof extrusionRoof = doc.Create.NewExtrusionRoof(curveArray, plane, level, roofType, UnitUtils.ConvertToInternalUnits(-5300, UnitTypeId.Millimeters), UnitUtils.ConvertToInternalUnits(5300, UnitTypeId.Millimeters));
+                // крышу делаем с свесами по 300мм с каждого края
+                ExtrusionRoof extrusionRoof = doc.Create.NewExtrusionRoof(curveArray, plane, level, roofType, -lenWall - UnitUtils.ConvertToInternalUnits(300, UnitTypeId.Millimeters), lenWall + UnitUtils.ConvertToInternalUnits(300, UnitTypeId.Millimeters));
 
                 trans.Commit();
                 return extrusionRoof;
